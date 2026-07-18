@@ -1,9 +1,7 @@
-const CACHE_NAME = 'expense-tracker-v1';
+const CACHE_NAME = 'expense-tracker-v2';
+const APP_SHELL_URLS = ['./', './index.html', './app.js', './manifest.json'];
 const PRECACHE_URLS = [
-  './',
-  './index.html',
-  './app.js',
-  './manifest.json',
+  ...APP_SHELL_URLS,
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
@@ -30,6 +28,25 @@ self.addEventListener('fetch', (event) => {
   // Never cache external API calls (exchange rates) — always go to network.
   if (!request.url.startsWith(self.location.origin)) return;
 
+  const isAppShell = request.mode === 'navigate' || APP_SHELL_URLS.some((u) => request.url.endsWith(u.replace('./', '')));
+
+  if (isAppShell) {
+    // Network-first: always pick up new deploys when online, fall back to cache offline.
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Static assets (icons): cache-first, they rarely change.
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;
