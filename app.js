@@ -2,7 +2,6 @@
 
 const STORAGE_KEY = 'expenseTracker.v1';
 const RATE_BASE = 'USD';
-const RATE_QUOTES = ['ILS', 'EUR'];
 const FALLBACK_RATES = { ILS: 3.65, EUR: 0.92 }; // rough hardcoded fallback if no cache exists yet
 
 const DEFAULT_CATEGORIES = [
@@ -127,7 +126,11 @@ async function ensureRate() {
     return cached;
   }
   try {
-    const url = `https://api.frankfurter.dev/v1/latest?from=${RATE_BASE}&to=${RATE_QUOTES.join(',')}`;
+    // Fetch rates for every currency the picker offers, not just the quick-pick set —
+    // otherwise any "More…" currency silently converts 1:1 instead of at its real rate.
+    const currencyList = await ensureCurrencyList();
+    const quoteCodes = Object.keys(currencyList).filter((c) => c !== RATE_BASE);
+    const url = `https://api.frankfurter.dev/v1/latest?from=${RATE_BASE}&to=${quoteCodes.join(',')}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('rate fetch failed: ' + res.status);
     const data = await res.json();
@@ -185,6 +188,10 @@ function formatMoney(amount, currency) {
 const chatState = {
   step: 'idle', // idle/amount -> awaiting-selection (category)
   amount: null,
+  // Currency for the transaction currently being logged. Starts as the persistent
+  // default each time and reverts to it after finalizing — a currency picked via
+  // the popover only applies to that one transaction, not future ones.
+  currency: state.settings.defaultCurrency,
 };
 
 const feedEl = document.getElementById('chat-feed');
@@ -243,6 +250,8 @@ function addChipsRow(chips, onPick, opts = {}) {
 
 function resetChatIdle() {
   chatState.amount = null;
+  chatState.currency = state.settings.defaultCurrency;
+  updateCurrencyBtn();
   inputEl.value = '';
   inputEl.disabled = false;
   inputEl.focus();
@@ -266,7 +275,7 @@ inputForm.addEventListener('submit', (e) => {
     clearFlowNodes();
     chatState.amount = amount;
     chatState.step = 'awaiting-selection';
-    trackFlowNode(addBubble(formatMoney(amount, state.settings.defaultCurrency), 'user'));
+    trackFlowNode(addBubble(formatMoney(amount, chatState.currency), 'user'));
     inputEl.value = '';
     inputEl.disabled = true;
     promptCategory();
@@ -280,7 +289,7 @@ function currencyLabel(code) {
 }
 
 function updateCurrencyBtn() {
-  currencyBtn.textContent = currencyLabel(state.settings.defaultCurrency);
+  currencyBtn.textContent = currencyLabel(chatState.currency);
 }
 
 function closeCurrencyPopover() {
@@ -288,9 +297,10 @@ function closeCurrencyPopover() {
   currencyPopover.innerHTML = '';
 }
 
-function setDefaultCurrency(code) {
-  state.settings.defaultCurrency = code;
-  saveState();
+// Applies to the transaction currently being logged only — reverts to the
+// persistent default (state.settings.defaultCurrency) once it's finalized.
+function setChatCurrency(code) {
+  chatState.currency = code;
   updateCurrencyBtn();
   closeCurrencyPopover();
 }
@@ -307,8 +317,8 @@ function popoverOptionBtn(label, onClick) {
 function renderCurrencyPopoverQuick() {
   currencyPopover.innerHTML = '';
   QUICK_CURRENCIES.forEach((code) => {
-    const btn = popoverOptionBtn(currencyLabel(code), () => setDefaultCurrency(code));
-    if (code === state.settings.defaultCurrency) btn.classList.add('font-semibold');
+    const btn = popoverOptionBtn(currencyLabel(code), () => setChatCurrency(code));
+    if (code === chatState.currency) btn.classList.add('font-semibold');
     currencyPopover.appendChild(btn);
   });
   currencyPopover.appendChild(
@@ -335,7 +345,7 @@ function renderCurrencyPopoverSearch(list) {
       .filter(([code, name]) => !f || code.toLowerCase().includes(f) || name.toLowerCase().includes(f))
       .slice(0, 30)
       .forEach(([code, name]) => {
-        const btn = popoverOptionBtn(`${code} — ${name}`, () => setDefaultCurrency(code));
+        const btn = popoverOptionBtn(`${code} — ${name}`, () => setChatCurrency(code));
         btn.className += ' text-xs';
         resultsEl.appendChild(btn);
       });
@@ -422,7 +432,7 @@ function finalizeExpense(categoryId) {
   const record = {
     id: uid(),
     amount: chatState.amount,
-    currency: state.settings.defaultCurrency,
+    currency: chatState.currency,
     categoryId,
     note: '',
     timestamp: new Date().toISOString(),
@@ -730,14 +740,17 @@ function toggleCategoryDetail(btn) {
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   slot.innerHTML = items.length
-    ? items.map((item) => `
+    ? items.map((item) => {
+        const displayAmt = convert(item.amount, item.currency, summaryCurrency);
+        return `
         <div class="flex items-center justify-between py-2 pl-6 pr-1 border-t border-slate-50">
           <div class="min-w-0">
-            <div class="text-sm">${formatMoney(item.amount, item.currency)}</div>
+            <div class="text-sm">${formatMoney(displayAmt, summaryCurrency)}</div>
             <div class="text-xs text-slate-400 truncate">${isoDateOnly(item.timestamp)}${item.note ? ' · ' + escapeHtml(item.note) : ''}</div>
           </div>
           <button class="text-xs text-slate-500 underline shrink-0 category-detail-edit-btn" data-id="${item.id}">Edit</button>
-        </div>`).join('')
+        </div>`;
+      }).join('')
     : '<div class="text-xs text-slate-400 py-3 pl-6">No expenses in this category.</div>';
 
   slot.querySelectorAll('.category-detail-edit-btn').forEach((editBtn) => {
