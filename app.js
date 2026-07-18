@@ -6,14 +6,14 @@ const RATE_QUOTES = ['ILS', 'EUR'];
 const FALLBACK_RATES = { ILS: 3.65, EUR: 0.92 }; // rough hardcoded fallback if no cache exists yet
 
 const DEFAULT_CATEGORIES = [
+  { id: 'transport', label: 'Transport', icon: '🚌', isDefault: true },
+  { id: 'dancing', label: 'Dancing', icon: '💃', isDefault: true },
+  { id: 'eating_out', label: 'Eating out', icon: '🍜', isDefault: true },
+  { id: 'groceries', label: 'Groceries', icon: '🛒', isDefault: true },
   { id: 'apartment', label: 'Apartment', icon: '🏠', isDefault: true },
   { id: 'utilities', label: 'Utility bills', icon: '💡', isDefault: true },
   { id: 'taxes', label: 'Taxes', icon: '🧾', isDefault: true },
-  { id: 'groceries', label: 'Groceries', icon: '🛒', isDefault: true },
-  { id: 'transport', label: 'Transport', icon: '🚗', isDefault: true },
-  { id: 'dancing', label: 'Dancing', icon: '💃', isDefault: true },
   { id: 'travel', label: 'Travel', icon: '✈️', isDefault: true },
-  { id: 'eating_out', label: 'Eating out', icon: '🍜', isDefault: true },
   { id: 'clothes', label: 'Clothes', icon: '👕', isDefault: true },
   { id: 'beauty', label: 'Beauty', icon: '✨', isDefault: true },
   { id: 'therapy', label: 'Therapy', icon: '🤝', isDefault: true },
@@ -21,6 +21,17 @@ const DEFAULT_CATEGORIES = [
   { id: 'entertainment', label: 'Entertainment', icon: '📺', isDefault: true },
   { id: 'extra', label: 'Extra', icon: '🔖', isDefault: true, nonDeletable: true },
 ];
+
+// Canonical display order + icon/label for known categories, derived from the list above.
+const CATEGORY_ORDER = DEFAULT_CATEGORIES.map((c) => c.id);
+
+function orderedCategories() {
+  return [...state.categories].sort((a, b) => {
+    const ra = CATEGORY_ORDER.includes(a.id) ? CATEGORY_ORDER.indexOf(a.id) : CATEGORY_ORDER.length;
+    const rb = CATEGORY_ORDER.includes(b.id) ? CATEGORY_ORDER.indexOf(b.id) : CATEGORY_ORDER.length;
+    return ra - rb;
+  });
+}
 
 const CURRENCY_SYMBOLS = { ILS: '₪', USD: '$', EUR: '€' };
 const QUICK_CURRENCIES = ['ILS', 'USD', 'EUR'];
@@ -54,11 +65,18 @@ function loadState() {
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw);
     const base = defaultState();
-    return {
+    const merged = {
       ...base,
       ...parsed,
       settings: { ...base.settings, ...(parsed.settings || {}) },
     };
+    // Known default categories have no rename/re-icon UI, so keep their icon/label
+    // in sync with the source of truth above rather than the value saved at seed time.
+    merged.categories = merged.categories.map((cat) => {
+      const canonical = DEFAULT_CATEGORIES.find((d) => d.id === cat.id);
+      return canonical ? { ...cat, icon: canonical.icon, label: canonical.label } : cat;
+    });
+    return merged;
   } catch (e) {
     console.error('Failed to load state, resetting', e);
     return defaultState();
@@ -183,6 +201,20 @@ function addBubble(html, who = 'bot') {
   return div;
 }
 
+// In-progress amount/category prompts are scratch UI, not a log entry — tracked here
+// so they can be wiped once the expense is finalized, leaving only the confirmation.
+let flowNodes = [];
+
+function trackFlowNode(node) {
+  flowNodes.push(node);
+  return node;
+}
+
+function clearFlowNodes() {
+  flowNodes.forEach((n) => n.remove());
+  flowNodes = [];
+}
+
 function addChipsRow(chips, onPick, opts = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'self-start flex flex-wrap gap-2 max-w-[92%]';
@@ -223,12 +255,13 @@ inputForm.addEventListener('submit', (e) => {
   if (chatState.step === 'amount') {
     const amount = parseFloat(raw.replace(',', '.'));
     if (isNaN(amount) || amount <= 0) {
-      addBubble("That doesn't look like a valid amount — try a number like 42.50.");
+      trackFlowNode(addBubble("That doesn't look like a valid amount — try a number like 42.50."));
       return;
     }
+    clearFlowNodes();
     chatState.amount = amount;
     chatState.step = 'awaiting-selection';
-    addBubble(formatMoney(amount, state.settings.defaultCurrency), 'user');
+    trackFlowNode(addBubble(formatMoney(amount, state.settings.defaultCurrency), 'user'));
     inputEl.value = '';
     inputEl.disabled = true;
     promptCategory();
@@ -323,20 +356,21 @@ document.addEventListener('click', (e) => {
 });
 
 function promptCategory() {
-  addBubble('What category?');
+  trackFlowNode(addBubble('What category?'));
   const wrap = document.createElement('div');
   wrap.className = 'self-start flex flex-wrap gap-2 max-w-[92%]';
   feedEl.appendChild(wrap);
+  trackFlowNode(wrap);
 
   function renderChips() {
     wrap.innerHTML = '';
-    state.categories.forEach((cat) => {
+    orderedCategories().forEach((cat) => {
       const btn = document.createElement('button');
       btn.className = 'chip';
       btn.textContent = `${cat.icon} ${cat.label}`;
       btn.addEventListener('click', () => {
         Array.from(wrap.children).forEach((c) => (c.disabled = true));
-        addBubble(`${cat.icon} ${cat.label}`, 'user');
+        trackFlowNode(addBubble(`${cat.icon} ${cat.label}`, 'user'));
         finalizeExpense(cat.id);
       });
       wrap.appendChild(btn);
@@ -362,6 +396,7 @@ function showAddCategoryInline(onAdded) {
     <button class="chip self-start save-cat-btn">Add category</button>
   `;
   feedEl.appendChild(wrap);
+  trackFlowNode(wrap);
   scrollFeedToBottom();
   const emojiInput = wrap.querySelector('.emoji-input');
   const labelInput = wrap.querySelector('.label-input');
@@ -391,6 +426,7 @@ function finalizeExpense(categoryId) {
   state.expenses.push(record);
   saveState();
 
+  clearFlowNodes();
   renderConfirmationBubble(record, { allowNote: true });
   runAlertChecks(record.monthKey, categoryId);
   resetChatIdle();
@@ -405,9 +441,18 @@ function renderConfirmationBubble(record, { allowNote } = {}) {
   bubble.innerHTML = `Logged ${formatMoney(record.amount, record.currency)} for ${cat.icon} ${cat.label}`;
   container.appendChild(bubble);
 
+  const footerRow = document.createElement('div');
+  footerRow.className = 'flex items-center gap-3 pl-2';
+  container.appendChild(footerRow);
+
   const noteLine = document.createElement('div');
-  noteLine.className = 'note-line pl-2';
-  container.appendChild(noteLine);
+  footerRow.appendChild(noteLine);
+
+  const editBtn = document.createElement('button');
+  editBtn.className = 'text-xs text-slate-400 underline shrink-0';
+  editBtn.textContent = 'Edit';
+  editBtn.addEventListener('click', () => openTransactionEdit(record.id));
+  footerRow.appendChild(editBtn);
 
   function renderNoteLine() {
     if (record.note) {
@@ -786,11 +831,11 @@ function openTxForm(record) {
 
 function buildTxForm(existingRecord) {
   const isNew = !existingRecord;
-  const record = existingRecord || { amount: '', currency: 'ILS', categoryId: state.categories[0].id, note: '', timestamp: new Date().toISOString() };
+  const record = existingRecord || { amount: '', currency: 'ILS', categoryId: orderedCategories()[0].id, note: '', timestamp: new Date().toISOString() };
   const form = document.createElement('div');
   form.className = 'px-4 py-3 bg-slate-50 flex flex-col gap-2';
 
-  const catOptions = state.categories.map((c) => `<option value="${c.id}" ${c.id === record.categoryId ? 'selected' : ''}>${c.icon} ${c.label}</option>`).join('');
+  const catOptions = orderedCategories().map((c) => `<option value="${c.id}" ${c.id === record.categoryId ? 'selected' : ''}>${c.icon} ${c.label}</option>`).join('');
   const currOptions = QUICK_CURRENCIES.map((c) => `<option value="${c}" ${c === record.currency ? 'selected' : ''}>${c}</option>`).join('');
 
   form.innerHTML = `
@@ -879,7 +924,7 @@ function renderSettings() {
   });
 
   const catList = document.getElementById('set-categories');
-  state.categories.forEach((cat) => {
+  orderedCategories().forEach((cat) => {
     const row = document.createElement('div');
     row.className = 'flex items-center justify-between py-1.5';
     row.innerHTML = `
