@@ -108,6 +108,11 @@ function shiftMonthKey(monthKey, delta) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function firstOfMonthTimestamp(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number);
+  return new Date(y, m - 1, 1, 12, 0, 0).toISOString();
+}
+
 function getCategory(id) {
   return state.categories.find((c) => c.id === id) || { id, label: id, icon: '❔' };
 }
@@ -831,7 +836,10 @@ function openTxForm(record) {
 
 function buildTxForm(existingRecord) {
   const isNew = !existingRecord;
-  const record = existingRecord || { amount: '', currency: 'ILS', categoryId: orderedCategories()[0].id, note: '', timestamp: new Date().toISOString() };
+  const defaultTimestamp = txMonthKey === monthKeyFromTimestamp(Date.now())
+    ? new Date().toISOString()
+    : firstOfMonthTimestamp(txMonthKey);
+  const record = existingRecord || { amount: '', currency: 'ILS', categoryId: orderedCategories()[0].id, note: '', timestamp: defaultTimestamp };
   const form = document.createElement('div');
   form.className = 'px-4 py-3 bg-slate-50 flex flex-col gap-2';
 
