@@ -666,11 +666,9 @@ function renderSummary() {
         badge = `<span class="text-[11px] text-slate-400">Not enough history yet</span>`;
       } else {
         const pctOver = Math.round(((totalIls - trailing.average) / trailing.average) * 100);
-        if (totalIls > trailing.average * state.settings.anomalyThreshold) {
-          badge = `<span class="text-[11px] font-medium text-red-600">+${pctOver}% vs usual</span>`;
-        } else {
-          badge = `<span class="text-[11px] text-emerald-600">In line with usual</span>`;
-        }
+        badge = totalIls > trailing.average * state.settings.anomalyThreshold
+          ? `<span class="text-[11px] font-medium text-red-600">+${pctOver}% vs usual</span>`
+          : '';
       }
       return `
         <div class="border-b border-slate-100">
