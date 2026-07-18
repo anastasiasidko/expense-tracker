@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+<title>Expense Tracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f172a">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  html, body { height: 100%; overscroll-behavior: none; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+  .view { display: none; }
+  .view.active { display: flex; }
+  .bubble-bot { align-self: flex-start; max-width: 88%; background: #f1f5f9; border-radius: 14px; padding: 8px 12px; }
+  .bubble-user { align-self: flex-end; max-width: 75%; background: #0f172a; color: white; border-radius: 14px; padding: 8px 12px; }
+  .chip { font-size: 12px; padding: 5px 11px; border-radius: 999px; border: 1px solid #e2e8f0; background: white; cursor: pointer; white-space: nowrap; }
+  .chip.selected { background: #0f172a; color: white; border-color: #0f172a; }
+  .chip.dashed { border-style: dashed; color: #64748b; }
+  .tabbtn { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; color: #94a3b8; flex: 1; padding: 6px 0; }
+  .tabbtn.active { color: #0f172a; font-weight: 600; }
+</style>
+</head>
+<body class="bg-slate-100">
+<div class="mx-auto max-w-md h-screen flex flex-col bg-white shadow-sm">
+
+  <!-- Chat view -->
+  <section id="view-chat" class="view active flex-col flex-1 min-h-0">
+    <header class="px-4 py-3 border-b text-center font-semibold text-sm">Expenses</header>
+    <div id="chat-feed" class="flex-1 min-h-0 overflow-y-auto px-3 py-3 flex flex-col gap-2"></div>
+    <form id="chat-input-form" class="border-t p-2 flex gap-2 items-center">
+      <div class="relative shrink-0">
+        <button type="button" id="currency-btn" aria-label="Change default currency"
+          class="border border-slate-200 rounded-full px-3 py-2 text-sm font-medium bg-white whitespace-nowrap"></button>
+        <div id="currency-popover" class="hidden absolute bottom-full mb-2 left-0 bg-white border border-slate-200 rounded-xl shadow-lg p-1.5 flex flex-col gap-0.5 z-10 w-44"></div>
+      </div>
+      <input id="chat-input" type="text" inputmode="decimal" autocomplete="off"
+        class="flex-1 min-w-0 border border-slate-200 rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+        placeholder="Amount">
+      <button type="submit" aria-label="Send" class="w-9 h-9 rounded-full bg-slate-900 text-white flex items-center justify-center shrink-0">➤</button>
+    </form>
+  </section>
+
+  <!-- Summary view -->
+  <section id="view-summary" class="view flex-col flex-1 min-h-0">
+    <header class="px-4 py-3 border-b text-center font-semibold text-sm">Summary</header>
+    <div class="flex items-center justify-between px-4 py-2">
+      <button id="summary-prev-month" class="text-slate-400 px-2">←</button>
+      <span id="summary-month-label" class="text-sm font-medium"></span>
+      <button id="summary-next-month" class="text-slate-400 px-2">→</button>
+    </div>
+    <div class="flex px-4">
+      <div class="flex bg-slate-100 rounded-lg p-0.5 w-fit">
+        <button data-currency="ILS" class="currency-toggle-btn text-xs px-3 py-1 rounded-md">₪ ILS</button>
+        <button data-currency="USD" class="currency-toggle-btn text-xs px-3 py-1 rounded-md">$ USD</button>
+      </div>
+    </div>
+    <div id="summary-content" class="flex-1 min-h-0 overflow-y-auto"></div>
+  </section>
+
+  <!-- Transactions view -->
+  <section id="view-transactions" class="view flex-col flex-1 min-h-0">
+    <header class="px-4 py-3 border-b text-center font-semibold text-sm">Transactions</header>
+    <div class="flex items-center justify-between px-4 py-2">
+      <button id="tx-prev-month" class="text-slate-400 px-2">←</button>
+      <span id="tx-month-label" class="text-sm font-medium"></span>
+      <button id="tx-next-month" class="text-slate-400 px-2">→</button>
+    </div>
+    <div class="px-4 pb-2">
+      <button id="add-expense-btn" class="w-full text-sm font-medium bg-slate-900 text-white rounded-full px-4 py-2">+ Add expense</button>
+    </div>
+    <div id="tx-list" class="flex-1 min-h-0 overflow-y-auto"></div>
+  </section>
+
+  <!-- Settings view -->
+  <section id="view-settings" class="view flex-col flex-1 min-h-0">
+    <header class="px-4 py-3 border-b text-center font-semibold text-sm">Settings</header>
+    <div id="settings-content" class="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-5"></div>
+  </section>
+
+  <!-- Bottom nav -->
+  <nav class="border-t flex bg-white">
+    <button class="tabbtn active" data-view="chat"><span>💬</span>Chat</button>
+    <button class="tabbtn" data-view="summary"><span>📊</span>Summary</button>
+    <button class="tabbtn" data-view="transactions"><span>📋</span>Transactions</button>
+    <button class="tabbtn" data-view="settings"><span>⚙️</span>Settings</button>
+  </nav>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
